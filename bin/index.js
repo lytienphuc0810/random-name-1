@@ -15,8 +15,8 @@ yargs
     alias: 'languages',
     describe: 'List all supported languages.',
     type: 'boolean',
-    demandOption: false,
+    demandOption: false
   }).help(true)
   .argv;
 
-new PortfolioManager().run(argv);
+new PortfolioManager(argv).run(argv);
