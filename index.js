@@ -42,7 +42,6 @@ class PortfolioManager {
       let { date } = args;
       date = date === true ? undefined : date;
 
-      // console.log(this.getValue({ date, token }, data));
       const tableData = await this.getValue({ date, token }, data);
       tableData.unshift(['TOKEN', 'AMOUNT', 'VALUATION (USD)', 'DATE']);
       console.log(table(tableData));
@@ -106,9 +105,9 @@ class PortfolioManager {
       };
 
       if (date) {
-        const mParamDate = moment(date).endOf('d');
-        const mDate = moment(record.timestamp);
-        if (mDate.isSameOrBefore(mParamDate)) {
+        const mParamDate = moment(date);
+        const mDate = moment.unix(record.timestamp);
+        if (mDate.isSameOrBefore(mParamDate, 'd')) {
           calculateCurrentPosition();
         }
       } else {
@@ -128,7 +127,6 @@ class PortfolioManager {
 
     return Promise.all(promiseArr).then((exchangeRateResult) => {
       const exchangeRates = _.merge({}, ...exchangeRateResult);
-      console.log(exchangeRates);
       const convertedResult = [];
       _.each(result, (value, key) => {
         const convertedValue = value * exchangeRates[key].USD;
