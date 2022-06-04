@@ -20,6 +20,8 @@
   },
   "homepage": "https://github.com/lytienphuc0810/interview#readme",
   "dependencies": {
+    "axios": "^0.27.2",
+    "bluebird": "^3.7.2",
     "csv-parser": "^3.0.0",
     "csv-writer": "^1.6.0",
     "lodash": "^4.17.21",
