@@ -6,16 +6,10 @@ const moment = require('moment');
 const config = require('./config');
 const axios = require('axios').default;
 const Promise = require('bluebird');
-const Loki = require('lokijs');
-const csv = require('fast-csv');
 const { createInterface } = require('readline');
 
 class PortfolioManager {
   constructor (args) {
-    this.db = new Loki('transactions.db');
-    this.transactions = this.db.addCollection('transactions');
-    this.transactions.ensureIndex('token', true);
-    this.transactions.ensureIndex('timestamp', true);
     this.isDebug = args.v;
   }
 
@@ -28,29 +22,28 @@ class PortfolioManager {
       throw new Error('filepath missing');
     }
 
+    let { token } = args;
+    token = token === true ? undefined : token;
+    let { date } = args;
+    date = date === true ? undefined : date;
+
+    let data = {};
     if (args.f !== undefined) {
       const filepath = args.f;
       try {
         if (_.isString(filepath) && filepath) {
-          await this.loadCSV(filepath);
+          data = await this.loadCSV(filepath, token, date);
         } else {
-          await this.loadCSV('./data.csv');
+          data = await this.loadCSV('./data.csv', token, date);
         }
       } catch (e) {
         this.debug(e);
       }
     }
 
-    // if (this.transactions.count() > 0) {
-    //   let { token } = args;
-    //   token = token === true ? undefined : token;
-    //   let { date } = args;
-    //   date = date === true ? undefined : date;
-    //
-    //   const tableData = await this.getValue({ date, token });
-    //   tableData.unshift(['TOKEN', 'AMOUNT', 'VALUATION (USD)', 'DATE']);
-    //   console.log(table(tableData));
-    // }
+    const tableData = await this.getValue(data, date);
+    tableData.unshift(['TOKEN', 'AMOUNT', 'VALUATION (USD)', 'DATE']);
+    console.log(table(tableData));
   }
 
   debug () {
@@ -59,38 +52,56 @@ class PortfolioManager {
     }
   }
 
-  loadCSV (filepath) {
-    return new Promise(async (resolve, reject) => {
-      const fileStream = fs.createReadStream(filepath, { highWaterMark: 256 * 1024 });
+  async loadCSV (filepath, token, date) {
+    const fileStream = fs.createReadStream(filepath, { highWaterMark: 256 * 1024 });
 
-      const rl = createInterface({
-        input: fileStream,
-        crlfDelay: Infinity
-      });
-
-      console.log('started', moment().format());
-      for await (const line of rl) {
-        // Each line in input.txt will be successively available here as `line`.
-        // console.log(`Line from file: ${line}`);
-      }
-      console.log('done', moment().format());
-
-      // .pipe(csv.parse({ headers: true }))
-      // .on('data', (data) => {
-      //   // this.transactions.insert({
-      //   //   ...data,
-      //   //   timestamp: parseInt(data.timestamp),
-      //   //   amount: data.transaction_type === 'DEPOSIT' ? parseFloat(data.amount) : -parseFloat(data.amount)
-      //   // });
-      // })
-      // .on('end', () => {
-      //   console.log('done', moment().format());
-      //   resolve();
-      // })
-      // .on('error', (e) => {
-      //   reject(e);
-      // });
+    const rl = createInterface({
+      input: fileStream,
+      crlfDelay: Infinity
     });
+
+    const result = {};
+
+    console.log('started', moment().format());
+    const tsDate = date ? moment(date).unix() : undefined;
+    for await (const line of rl) {
+      // Each line in input.txt will be successively available here as `line`.
+      const arr = _.split(line, ',');
+      const data = {
+        timestamp: parseInt(arr[0]),
+        transaction_type: arr[1],
+        token: arr[2],
+        amount: arr[1] === 'DEPOSIT' ? parseFloat(arr[3]) : -parseFloat(arr[3])
+      };
+
+      if (token && data.token !== token) {
+        continue;
+      }
+      if (tsDate && tsDate < data.date) {
+        continue;
+      }
+
+      result[data.token] = (result[data.token] || 0) + data.amount;
+    }
+    console.log('done', moment().format());
+    console.log(result);
+    return result;
+
+    // .pipe(csv.parse({ headers: true }))
+    // .on('data', (data) => {
+    //   // this.transactions.insert({
+    //   //   ...data,
+    //   //   timestamp: parseInt(data.timestamp),
+    //   //   amount: data.transaction_type === 'DEPOSIT' ? parseFloat(data.amount) : -parseFloat(data.amount)
+    //   // });
+    // })
+    // .on('end', () => {
+    //   console.log('done', moment().format());
+    //   resolve();
+    // })
+    // .on('error', (e) => {
+    //   reject(e);
+    // });
   }
 
   getExchangeRates (symbol, timestamp) {
@@ -107,28 +118,8 @@ class PortfolioManager {
       });
   }
 
-  async getValue ({ date, token }) {
-    const result = {};
-
-    const query = {};
-    if (token) {
-      query.token = { $eq: token };
-    }
-    if (date) {
-      const mParamTs = moment(date).endOf('d').unix();
-      query.timestamp = { $lte: mParamTs };
-    }
-
-    const records = this.transactions.chain()
-      .find(query)
-      .data();
-
-    _.each(records, record => {
-      if (result[record.token] === undefined) {
-        result[record.token] = 0;
-      }
-      result[record.token] += record.amount;
-    });
+  async getValue (data, date) {
+    const result = data;
 
     const promiseArr = [];
     const timestamp = date ? moment(date).unix() : moment().unix();
