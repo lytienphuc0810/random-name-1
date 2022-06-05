@@ -1,5 +1,4 @@
 const { table } = require('table');
-const csv = require('csv-parser');
 const fs = require('fs');
 const _ = require('lodash');
 const GenerateCSV = require('./generateCSV');
@@ -7,9 +6,16 @@ const moment = require('moment');
 const config = require('./config');
 const axios = require('axios').default;
 const Promise = require('bluebird');
+const Loki = require('lokijs');
+const csv = require('fast-csv');
+const { createInterface } = require('readline');
 
 class PortfolioManager {
   constructor (args) {
+    this.db = new Loki('transactions.db');
+    this.transactions = this.db.addCollection('transactions');
+    this.transactions.ensureIndex('token', true);
+    this.transactions.ensureIndex('timestamp', true);
     this.isDebug = args.v;
   }
 
@@ -22,30 +28,29 @@ class PortfolioManager {
       throw new Error('filepath missing');
     }
 
-    let data = [];
     if (args.f !== undefined) {
       const filepath = args.f;
       try {
         if (_.isString(filepath) && filepath) {
-          data = await this.loadCSV(filepath);
+          await this.loadCSV(filepath);
         } else {
-          data = await this.loadCSV('./data.csv');
+          await this.loadCSV('./data.csv');
         }
       } catch (e) {
         this.debug(e);
       }
     }
 
-    if (data.length > 0) {
-      let { token } = args;
-      token = token === true ? undefined : token;
-      let { date } = args;
-      date = date === true ? undefined : date;
-
-      const tableData = await this.getValue({ date, token }, data);
-      tableData.unshift(['TOKEN', 'AMOUNT', 'VALUATION (USD)', 'DATE']);
-      console.log(table(tableData));
-    }
+    // if (this.transactions.count() > 0) {
+    //   let { token } = args;
+    //   token = token === true ? undefined : token;
+    //   let { date } = args;
+    //   date = date === true ? undefined : date;
+    //
+    //   const tableData = await this.getValue({ date, token });
+    //   tableData.unshift(['TOKEN', 'AMOUNT', 'VALUATION (USD)', 'DATE']);
+    //   console.log(table(tableData));
+    // }
   }
 
   debug () {
@@ -55,23 +60,36 @@ class PortfolioManager {
   }
 
   loadCSV (filepath) {
-    const results = [];
-    return new Promise((resolve, reject) => {
-      fs.createReadStream(filepath)
-        .pipe(csv())
-        .on('data', (data) => {
-          results.push({
-            ...data,
-            timestamp: parseInt(data.timestamp),
-            amount: parseFloat(data.amount)
-          });
-        })
-        .on('end', () => {
-          resolve(results);
-        })
-        .on('error', (e) => {
-          reject(e);
-        });
+    return new Promise(async (resolve, reject) => {
+      const fileStream = fs.createReadStream(filepath, { highWaterMark: 256 * 1024 });
+
+      const rl = createInterface({
+        input: fileStream,
+        crlfDelay: Infinity
+      });
+
+      console.log('started', moment().format());
+      for await (const line of rl) {
+        // Each line in input.txt will be successively available here as `line`.
+        // console.log(`Line from file: ${line}`);
+      }
+      console.log('done', moment().format());
+
+      // .pipe(csv.parse({ headers: true }))
+      // .on('data', (data) => {
+      //   // this.transactions.insert({
+      //   //   ...data,
+      //   //   timestamp: parseInt(data.timestamp),
+      //   //   amount: data.transaction_type === 'DEPOSIT' ? parseFloat(data.amount) : -parseFloat(data.amount)
+      //   // });
+      // })
+      // .on('end', () => {
+      //   console.log('done', moment().format());
+      //   resolve();
+      // })
+      // .on('error', (e) => {
+      //   reject(e);
+      // });
     });
   }
 
@@ -89,35 +107,28 @@ class PortfolioManager {
       });
   }
 
-  async getValue ({ date, token }, data) {
-    let result = {};
-    _.each(data, record => {
+  async getValue ({ date, token }) {
+    const result = {};
+
+    const query = {};
+    if (token) {
+      query.token = { $eq: token };
+    }
+    if (date) {
+      const mParamTs = moment(date).endOf('d').unix();
+      query.timestamp = { $lte: mParamTs };
+    }
+
+    const records = this.transactions.chain()
+      .find(query)
+      .data();
+
+    _.each(records, record => {
       if (result[record.token] === undefined) {
         result[record.token] = 0;
       }
-
-      const calculateCurrentPosition = () => {
-        if (record.transaction_type === 'WITHDRAWAL') {
-          result[record.token] -= record.amount;
-        } else {
-          result[record.token] += record.amount;
-        }
-      };
-
-      if (date) {
-        const mParamDate = moment(date);
-        const mDate = moment.unix(record.timestamp);
-        if (mDate.isSameOrBefore(mParamDate, 'd')) {
-          calculateCurrentPosition();
-        }
-      } else {
-        calculateCurrentPosition();
-      }
+      result[record.token] += record.amount;
     });
-
-    if (token) {
-      result = _.pick(result, token);
-    }
 
     const promiseArr = [];
     const timestamp = date ? moment(date).unix() : moment().unix();

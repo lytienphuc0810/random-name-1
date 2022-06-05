@@ -24,7 +24,9 @@
     "bluebird": "^3.7.2",
     "csv-parser": "^3.0.0",
     "csv-writer": "^1.6.0",
+    "fast-csv": "^4.3.6",
     "lodash": "^4.17.21",
+    "lokijs": "^1.5.12",
     "moment": "^2.29.3",
     "table": "^6.8.0",
     "yargs": "^17.5.1"
