@@ -142,7 +142,30 @@ describe('PortfolioManager', () => {
           .toThrowError('filepath missing');
       });
     });
-    it('should token & date argument correctly', () => {});
+    describe('token & date arguments', () => {
+      it('should handle token & date arguments correctly', async () => {
+        pManager = new PortfolioManager({ token: 'token', date: 'date', f: 'data.csv' });
+        const loadCsvMock = jest.spyOn(pManager, 'loadCSV').mockResolvedValueOnce(data);
+        const getValueMock = jest.spyOn(pManager, 'getValue').mockResolvedValueOnce([]);
+        const consoleMock = jest.spyOn(console, 'log').mockImplementation(() => {});
+
+        await pManager.run({ token: 'token', date: 'date', f: 'data.csv' });
+        expect(loadCsvMock).toBeCalled();
+        expect(getValueMock).toBeCalledWith({ token: 'token', date: 'date' }, expect.anything());
+        expect(consoleMock).toBeCalled();
+      });
+      it('should handle empty token & date arguments correctly', async () => {
+        pManager = new PortfolioManager({ token: true, date: true, f: 'data.csv' });
+        const loadCsvMock = jest.spyOn(pManager, 'loadCSV').mockResolvedValueOnce(data);
+        const getValueMock = jest.spyOn(pManager, 'getValue').mockResolvedValueOnce([]);
+        const consoleMock = jest.spyOn(console, 'log').mockImplementation(() => {});
+
+        await pManager.run({ token: true, date: true, f: 'data.csv' });
+        expect(loadCsvMock).toBeCalled();
+        expect(getValueMock).toBeCalledWith({ token: undefined, date: undefined }, expect.anything());
+        expect(consoleMock).toBeCalled();
+      });
+    });
   });
   describe('debug', () => {
     it('should log when enabled', () => {
@@ -157,9 +180,6 @@ describe('PortfolioManager', () => {
       pManager.debug('');
       expect(consoleMock).not.toBeCalled();
     });
-  });
-  describe('loadCSV', () => {
-
   });
   describe('getExchangeRates', () => {
     it('show call the correct API with correct query string', async () => {
@@ -178,6 +198,32 @@ describe('PortfolioManager', () => {
       await pManager.getExchangeRates('DOGE', 1654333919);
       expect(axiosMock).toBeCalledWith('https://min-api.cryptocompare.com/data/pricehistorical?fsym=DOGE&tsyms=USD&ts=1654333919', expect.anything());
       expect(debugMock).toBeCalledWith(error);
+    });
+  });
+  describe('loadCSV', () => {
+    it('should parse csv & return data', async () => {
+      pManager = new PortfolioManager({});
+      const result = await pManager.loadCSV('./mockCSV.csv');
+      expect(result).toEqual([
+        {
+          timestamp: 1654333919,
+          transaction_type: 'DEPOSIT',
+          token: 'SHIB',
+          amount: 0.29042397821800864
+        },
+        {
+          timestamp: 1654333919,
+          transaction_type: 'WITHDRAWAL',
+          token: 'CRO',
+          amount: 0.19544706682335997
+        },
+        {
+          timestamp: 1654333919,
+          transaction_type: 'DEPOSIT',
+          token: 'DOGE',
+          amount: 0.7994686780411233
+        }
+      ]);
     });
   });
 });
