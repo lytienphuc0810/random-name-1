@@ -38,4 +38,11 @@ Please see the attached https://github.com/lytienphuc0810/interview/blob/main/re
 
 Test coverage is at 100%. Please view the attached https://github.com/lytienphuc0810/interview/blob/main/coverage.png
 
-## 
+## Design Decisions
+1. This problem has a very big dataset ~1GB that has 30M records. Parsing this CSV & doing type conversion on fields will have to be very efficient. With the following approach I managed to get the runtime on provided dataset to be under 40 seconds:
+   - For every 5M records chunk, I run a Worker Thread to run the heavy csv parsing, type conversion & value comparison tasks on the chunk.
+   - Wait for all the Worker Thread to complete & sum all of their returned data.
+   - Early return on records that are not matched the passed parameters.
+2. I use `axios` for the http client as it is a very common lib.
+3. I use `bluebird` for `Promise`.
+4. I use `jest` for test framework as it is a very common lib & get test coverage to 100%.
