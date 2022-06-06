@@ -6,7 +6,13 @@ const moment = require('moment');
 const config = require('./config');
 const axios = require('axios').default;
 const Promise = require('bluebird');
-const { createInterface } = require('readline');
+const { createInterface } = require('node:readline');
+const {
+  Worker
+} = require('node:worker_threads');
+const path = require('path');
+
+const LINES_COUNT_FOR_WORKER = 5000000;
 
 class PortfolioManager {
   constructor (args) {
@@ -53,55 +59,62 @@ class PortfolioManager {
   }
 
   async loadCSV (filepath, token, date) {
-    const fileStream = fs.createReadStream(filepath, { highWaterMark: 256 * 1024 });
-
-    const rl = createInterface({
-      input: fileStream,
-      crlfDelay: Infinity
-    });
-
-    const result = {};
-
-    console.log('started', moment().format());
-    const tsDate = date ? moment(date).unix() : undefined;
-    for await (const line of rl) {
-      // Each line in input.txt will be successively available here as `line`.
-      const arr = _.split(line, ',');
-      const data = {
-        timestamp: parseInt(arr[0]),
-        transaction_type: arr[1],
-        token: arr[2],
-        amount: arr[1] === 'DEPOSIT' ? parseFloat(arr[3]) : -parseFloat(arr[3])
-      };
-
-      if (token && data.token !== token) {
-        continue;
-      }
-      if (tsDate && tsDate < data.date) {
-        continue;
-      }
-
-      result[data.token] = (result[data.token] || 0) + data.amount;
+    function invokeWorker (workerPromises, lines, tsDate) {
+      workerPromises.push(new Promise((resolve, reject) => {
+        const worker = new Worker(path.resolve(__dirname, 'processLines.js'), { workerData: { lines, tsDate, token } });
+        worker.once('message', (message) => {
+          resolve(message);
+        });
+      }));
     }
-    console.log('done', moment().format());
-    console.log(result);
-    return result;
 
-    // .pipe(csv.parse({ headers: true }))
-    // .on('data', (data) => {
-    //   // this.transactions.insert({
-    //   //   ...data,
-    //   //   timestamp: parseInt(data.timestamp),
-    //   //   amount: data.transaction_type === 'DEPOSIT' ? parseFloat(data.amount) : -parseFloat(data.amount)
-    //   // });
-    // })
-    // .on('end', () => {
-    //   console.log('done', moment().format());
-    //   resolve();
-    // })
-    // .on('error', (e) => {
-    //   reject(e);
-    // });
+    return new Promise((resolve, reject) => {
+      const rl = createInterface({
+        input: fs.createReadStream(filepath),
+        crlfDelay: Infinity
+      });
+
+      const tsDate = date ? moment(date).unix() : undefined;
+
+      const workerPromises = [];
+      let lines = [];
+      let isFirstLineSkip = false;
+
+      rl.on('line', (line) => {
+        if (!isFirstLineSkip) {
+          isFirstLineSkip = true;
+          return;
+        }
+
+        if (lines.length < LINES_COUNT_FOR_WORKER) {
+          lines.push(line);
+        } else {
+          invokeWorker(workerPromises, lines, tsDate);
+          lines = [line];
+        }
+      });
+
+      rl.on('close', () => {
+        invokeWorker(workerPromises, lines, tsDate);
+        lines = [];
+
+        Promise.all(workerPromises).then(
+          (workerResults) => {
+            const result = {};
+            _.each(workerResults, r => {
+              _.each(r, (value, key) => {
+                if (result[key] === undefined) {
+                  result[key] = r[key];
+                } else {
+                  result[key] += r[key];
+                }
+              });
+            });
+            resolve(result);
+          }
+        );
+      });
+    });
   }
 
   getExchangeRates (symbol, timestamp) {
