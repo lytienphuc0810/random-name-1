@@ -30,9 +30,12 @@ Options:
                                                                         [string]
       --help       Show help                                           [boolean]
 ```
+Please see the attached https://github.com/lytienphuc0810/interview/blob/main/result.png for the example output.
 
 ## Running Tests
 1. `npm install`
 2. `npm run test`
 
 Test coverage is at 100%. Please view the attached https://github.com/lytienphuc0810/interview/blob/main/coverage.png
+
+## 
