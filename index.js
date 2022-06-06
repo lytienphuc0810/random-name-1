@@ -1,7 +1,6 @@
 const { table } = require('table');
 const fs = require('fs');
 const _ = require('lodash');
-const GenerateCSV = require('./generateCSV');
 const moment = require('moment');
 const config = require('./config');
 const axios = require('axios').default;
@@ -12,22 +11,14 @@ const {
 } = require('node:worker_threads');
 const path = require('path');
 
-const LINES_COUNT_FOR_WORKER = 5000000;
-
 class PortfolioManager {
+  LINES_COUNT_FOR_WORKER = 5000000;
+
   constructor (args) {
     this.isDebug = args.v;
   }
 
   async run (args) {
-    if (args.g !== undefined) {
-      const filepath = args.g;
-      if (_.isString(filepath) && filepath) {
-        return new GenerateCSV().run(filepath);
-      }
-      throw new Error('filepath missing');
-    }
-
     let { token } = args;
     token = token === true ? undefined : token;
     let { date } = args;
@@ -74,7 +65,7 @@ class PortfolioManager {
         crlfDelay: Infinity
       });
 
-      const tsDate = date ? moment(date).unix() : undefined;
+      const tsDate = date ? moment(date).endOf('d').unix() : undefined;
 
       const workerPromises = [];
       let lines = [];
@@ -86,7 +77,7 @@ class PortfolioManager {
           return;
         }
 
-        if (lines.length < LINES_COUNT_FOR_WORKER) {
+        if (lines.length < this.LINES_COUNT_FOR_WORKER) {
           lines.push(line);
         } else {
           invokeWorker(workerPromises, lines, tsDate);
@@ -114,6 +105,8 @@ class PortfolioManager {
           }
         );
       });
+
+      rl.on('error', (e) => { reject(e); });
     });
   }
 

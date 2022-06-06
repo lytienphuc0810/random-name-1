@@ -15,7 +15,7 @@ function processLines () {
       if (token && data.token !== token) {
         return;
       }
-      if (tsDate && tsDate < data.date) {
+      if (tsDate && tsDate < data.timestamp) {
         return;
       }
 

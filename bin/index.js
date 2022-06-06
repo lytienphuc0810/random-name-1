@@ -17,11 +17,6 @@ const options = yargs
     type: 'boolean',
     demandOption: false
   })
-  .option('g', {
-    describe: 'Generate the test CSV & save it to the passed filepath',
-    type: 'string',
-    demandOption: false
-  })
   .option('f', {
     describe: 'Pass the csv file to be parsed',
     type: 'string',
